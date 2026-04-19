@@ -1,0 +1,73 @@
+/*
+ * Copyright 2025 Daytona Platforms Inc.
+ * SPDX-License-Identifier: AGPL-3.0
+ */
+
+import { Region, Sandbox, SandboxState, SnapshotDto } from '@daytona/api-client'
+import { Table } from '@tanstack/react-table'
+
+export interface SandboxTableProps {
+  data: Sandbox[]
+  sandboxIsLoading: Record<string, boolean>
+  sandboxStateIsTransitioning: Record<string, boolean>
+  loading: boolean
+  snapshots: SnapshotDto[]
+  loadingSnapshots: boolean
+  regionsData: Region[]
+  regionsDataIsLoading: boolean
+  getRegionName: (regionId: string) => string | undefined
+  handleStart: (id: string) => void
+  handleStop: (id: string) => void
+  handleDelete: (id: string) => void
+  handleBulkDelete: (ids: string[]) => void
+  handleBulkStart: (ids: string[]) => void
+  handleBulkStop: (ids: string[]) => void
+  handleBulkArchive: (ids: string[]) => void
+  handleArchive: (id: string) => void
+  handleVnc: (id: string) => void
+  getWebTerminalUrl: (id: string) => Promise<string | null>
+  handleCreateSshAccess: (id: string) => void
+  handleRevokeSshAccess: (id: string) => void
+  onRowClick?: (sandbox: Sandbox) => void
+  handleRecover: (id: string) => void
+  handleScreenRecordings: (id: string) => void
+  handleCreateSnapshot: (id: string) => void
+  handleFork: (id: string) => void
+  handleViewForks: (id: string) => void
+}
+
+export interface SandboxTableActionsProps {
+  sandbox: Sandbox
+  writePermitted: boolean
+  deletePermitted: boolean
+  isLoading: boolean
+  runnerClass?: string
+  onStart: (id: string) => void
+  onStop: (id: string) => void
+  onDelete: (id: string) => void
+  onArchive: (id: string) => void
+  onVnc: (id: string) => void
+  onOpenWebTerminal: (id: string) => void
+  onCreateSshAccess: (id: string) => void
+  onRevokeSshAccess: (id: string) => void
+  onFork?: () => void
+  onCreateSnapshot?: () => void
+  onViewForks?: () => void
+  onRecover: (id: string) => void
+  onScreenRecordings: (id: string) => void
+}
+
+export interface SandboxTableHeaderProps {
+  table: Table<Sandbox>
+  labelOptions: FacetedFilterOption[]
+  regionOptions: FacetedFilterOption[]
+  regionsDataIsLoading: boolean
+  snapshots: SnapshotDto[]
+  loadingSnapshots: boolean
+}
+
+export interface FacetedFilterOption {
+  label: string
+  value: string | SandboxState
+  icon?: any
+}
