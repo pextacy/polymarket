@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     lightpanda_timeout_seconds: int = 30
     lightpanda_max_page_bytes: int = 2 * 1024 * 1024
 
+    # Daytona runtime
+    daytona_api_key: Optional[str] = None
+    daytona_api_url: str = "https://app.daytona.io/api"
+    daytona_target: Optional[str] = None
+    daytona_sandbox_name_prefix: str = "polymarket-trader"
+    daytona_sandbox_snapshot: Optional[str] = None
+    daytona_sandbox_auto_stop_minutes: int = 15
+    daytona_sandbox_command_timeout_seconds: int = 1800
+    daytona_project_repo_url: Optional[str] = None
+    daytona_project_ref: Optional[str] = None
+    daytona_project_dir: str = "/home/daytona/polymarket"
+
     # Polymarket APIs
     gamma_base_url: str = "https://gamma-api.polymarket.com"
     clob_base_url: str = "https://clob.polymarket.com"
@@ -148,11 +160,53 @@ class Settings(BaseSettings):
     def validate_trading_mode(cls, v: str) -> str:
         return v.lower() if isinstance(v, str) else v
 
+    @field_validator(
+        "daytona_sandbox_auto_stop_minutes",
+        "daytona_sandbox_command_timeout_seconds",
+    )
+    @classmethod
+    def validate_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("value must be non-negative")
+        return v
+
     def require_live_keys(self) -> None:
         if not self.polymarket_private_key:
             raise ValueError("POLYMARKET_PRIVATE_KEY is required for live trading")
         if not self.polymarket_proxy_address:
             raise ValueError("POLYMARKET_PROXY_ADDRESS is required for live trading")
+
+    def runtime_env(self) -> dict[str, str]:
+        excluded = {
+            "daytona_api_key",
+            "daytona_api_url",
+            "daytona_target",
+            "daytona_sandbox_name_prefix",
+            "daytona_sandbox_snapshot",
+            "daytona_sandbox_auto_stop_minutes",
+            "daytona_sandbox_command_timeout_seconds",
+            "daytona_project_repo_url",
+            "daytona_project_ref",
+            "daytona_project_dir",
+        }
+        if self.trading_mode != TradingMode.LIVE:
+            excluded.update({"polymarket_private_key", "polymarket_proxy_address"})
+
+        env: dict[str, str] = {}
+        for field_name in self.__class__.model_fields:
+            if field_name in excluded:
+                continue
+
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if isinstance(value, Enum):
+                env[field_name.upper()] = value.value
+            else:
+                env[field_name.upper()] = str(value)
+
+        env["PYTHONUNBUFFERED"] = "1"
+        return env
 
 
 _settings: Optional[Settings] = None

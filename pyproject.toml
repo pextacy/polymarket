@@ -33,6 +33,9 @@ dev = [
     "pytest-httpx>=0.30.0",
     "respx>=0.21.1",
 ]
+daytona = [
+    "daytona",
+]
 
 [project.scripts]
 polymarket = "polymarket_trader.cli:cli"

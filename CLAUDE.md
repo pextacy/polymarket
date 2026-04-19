@@ -173,18 +173,20 @@ SearXNG result schema:
 
 ```bash
 # Core (Milestone 1)
-python cli.py scan
-python cli.py paper-trade
-python cli.py report
-python cli.py positions
-python cli.py runs
-python cli.py risk-status
-python cli.py sandbox-status
+python -m polymarket_trader.cli scan
+python -m polymarket_trader.cli paper-trade
+python -m polymarket_trader.cli report
+python -m polymarket_trader.cli positions
+python -m polymarket_trader.cli runs
+python -m polymarket_trader.cli risk-status
+python -m polymarket_trader.cli sandbox-status
+python -m polymarket_trader.cli sandbox-scan
+python -m polymarket_trader.cli sandbox-paper-trade-once
 
 # Later (Milestone 4+)
-python cli.py live-trade       # requires explicit opt-in
-python cli.py resume-run
-python cli.py reconcile
+python -m polymarket_trader.cli live-trade       # requires explicit opt-in
+python -m polymarket_trader.cli resume-run
+python -m polymarket_trader.cli reconcile
 ```
 
 ---
@@ -209,7 +211,7 @@ python cli.py reconcile
 - Daytona worker integration
 - Control server orchestration + scheduling
 - Health checks, retry, recovery framework
-- Exit: unattended paper mode stable for 7+ days
+- Exit: remote sandbox scan and paper-trade workers run through Daytona, then unattended paper mode stays stable for 7+ days
 
 ### M4 — Live Trading Readiness
 - Live broker hardening + reconciliation

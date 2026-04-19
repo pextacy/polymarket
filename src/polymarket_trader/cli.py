@@ -12,6 +12,7 @@ from rich.table import Table
 from .config import TradingMode, get_settings
 from .orchestrator import Orchestrator
 from .persistence.store import TradeStore
+from .runtime import DaytonaRuntime, DaytonaRuntimeError
 
 console = Console()
 
@@ -21,6 +22,15 @@ def _setup_logging(log_level: str, log_file: str) -> None:
     logger.add(sys.stderr, level=log_level, format="{time} {level} {message}")
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
     logger.add(log_file, level="DEBUG", rotation="50 MB", retention="30 days")
+
+
+def _print_daytona_command_result(exit_code: int, sandbox_name: str, sandbox_id: str, output: str) -> None:
+    console.print(
+        f"[bold]Sandbox[/bold] {sandbox_name} "
+        f"({sandbox_id[:12]}) exit_code={exit_code}"
+    )
+    if output.strip():
+        console.out(output, end="" if output.endswith("\n") else "\n")
 
 
 @click.group()
@@ -247,37 +257,101 @@ def risk_status(ctx: click.Context) -> None:
 
 
 @cli.command("sandbox-status")
+@click.option("--role", default=None, help="Optional sandbox role label filter")
+@click.option("--limit", default=20, show_default=True, help="Maximum sandboxes to show")
 @click.pass_context
-def sandbox_status(ctx: click.Context) -> None:
-    """Show Daytona sandbox status (Milestone 3 — requires DAYTONA_API_KEY)."""
-    import os
-    daytona_key = os.environ.get("DAYTONA_API_KEY")
-    if not daytona_key:
-        console.print(
-            "[yellow]Daytona not configured.[/yellow] "
-            "Set DAYTONA_API_KEY to enable sandbox orchestration (Milestone 3)."
-        )
-        return
-
+def sandbox_status(ctx: click.Context, role: str | None, limit: int) -> None:
+    """Show Daytona sandbox status for this project."""
+    settings = ctx.obj["settings"]
     try:
-        from daytona_sdk import Daytona  # type: ignore[import]
-        client = Daytona(api_key=daytona_key)
-        sandboxes = client.list()
+        runtime = DaytonaRuntime(settings)
+        sandboxes = runtime.list_sandboxes(role=role, limit=limit)
+        if not sandboxes:
+            console.print("[yellow]No Daytona sandboxes found for this project.[/yellow]")
+            return
+
         table = Table(title="Daytona Sandboxes")
+        table.add_column("Name")
         table.add_column("ID", style="dim")
+        table.add_column("Role")
         table.add_column("State")
+        table.add_column("Auto Stop", justify="right")
         table.add_column("Created")
         for sb in sandboxes:
+            if sb.auto_stop_interval is None:
+                auto_stop = "—"
+            elif sb.auto_stop_interval == 0:
+                auto_stop = "off"
+            else:
+                auto_stop = f"{sb.auto_stop_interval}m"
             table.add_row(
-                str(sb.id)[:16],
-                str(sb.state),
-                str(getattr(sb, "created_at", "—")),
+                sb.name or "—",
+                sb.sandbox_id[:16],
+                sb.role or "—",
+                sb.state,
+                auto_stop,
+                sb.created_at,
             )
         console.print(table)
-    except ImportError:
-        console.print(
-            "[red]daytona-sdk not installed.[/red] "
-            "Run: pip install daytona-sdk"
-        )
+    except DaytonaRuntimeError as e:
+        console.print(f"[red]Daytona runtime error:[/red] {e}")
     except Exception as e:
         console.print(f"[red]Daytona API error:[/red] {e}")
+
+
+@cli.command("sandbox-scan")
+@click.option("--top", default=10, show_default=True, help="Number of markets to scan")
+@click.option("--role", default="scanner", show_default=True, help="Daytona sandbox role label")
+@click.option("--reuse/--fresh", default=True, show_default=True, help="Reuse an existing sandbox when available")
+@click.pass_context
+def sandbox_scan(ctx: click.Context, top: int, role: str, reuse: bool) -> None:
+    """Run `scan` inside a Daytona sandbox."""
+    settings = ctx.obj["settings"]
+    try:
+        runtime = DaytonaRuntime(settings)
+        result = runtime.run_cli(
+            ["scan", "--top", str(top)],
+            role=role,
+            reuse=reuse,
+        )
+        _print_daytona_command_result(
+            result.exit_code,
+            result.sandbox_name,
+            result.sandbox_id,
+            result.output,
+        )
+        if result.exit_code != 0:
+            raise click.ClickException("Remote scan failed")
+    except DaytonaRuntimeError as e:
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command("sandbox-paper-trade-once")
+@click.option("--role", default="trader", show_default=True, help="Daytona sandbox role label")
+@click.option("--reuse/--fresh", default=True, show_default=True, help="Reuse an existing sandbox when available")
+@click.pass_context
+def sandbox_paper_trade_once(ctx: click.Context, role: str, reuse: bool) -> None:
+    """Run a single paper trading cycle inside a Daytona sandbox."""
+    settings = ctx.obj["settings"]
+    settings.trading_mode = TradingMode.PAPER
+    try:
+        runtime = DaytonaRuntime(settings)
+        result = runtime.run_cli(
+            ["--mode", "paper", "paper-trade", "--once"],
+            role=role,
+            reuse=reuse,
+        )
+        _print_daytona_command_result(
+            result.exit_code,
+            result.sandbox_name,
+            result.sandbox_id,
+            result.output,
+        )
+        if result.exit_code != 0:
+            raise click.ClickException("Remote paper trade failed")
+    except DaytonaRuntimeError as e:
+        raise click.ClickException(str(e)) from e
+
+
+if __name__ == "__main__":
+    cli()

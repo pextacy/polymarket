@@ -152,4 +152,22 @@ DATABASE_URL=postgresql+asyncpg://trader:password@localhost:5432/polymarket_trad
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `POSTGRES_PASSWORD` | `changeme` | PostgreSQL password used by docker-compose. |
-| `DAYTONA_API_KEY` | _(empty)_ | Daytona API key for sandbox orchestration (Milestone 3). |
+| `DAYTONA_API_KEY` | _(empty)_ | Daytona API key used by sandbox commands. |
+
+---
+
+## Daytona Runtime
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DAYTONA_API_URL` | `https://app.daytona.io/api` | Daytona API base URL. |
+| `DAYTONA_TARGET` | _(empty)_ | Optional Daytona target region or runner name. |
+| `DAYTONA_SANDBOX_NAME_PREFIX` | `polymarket-trader` | Prefix used for sandbox names and project labels. |
+| `DAYTONA_SANDBOX_SNAPSHOT` | _(empty)_ | Optional Daytona snapshot name to create sandboxes from. |
+| `DAYTONA_SANDBOX_AUTO_STOP_MINUTES` | `15` | Auto-stop interval in minutes. `0` disables auto-stop. |
+| `DAYTONA_SANDBOX_COMMAND_TIMEOUT_SECONDS` | `1800` | Timeout used for remote bootstrap and worker commands. |
+| `DAYTONA_PROJECT_REPO_URL` | _(auto-detected)_ | Repo URL cloned into the sandbox. Falls back to local `git remote get-url origin`. |
+| `DAYTONA_PROJECT_REF` | _(auto-detected)_ | Branch or commit checked out in the sandbox. Falls back to the local current branch or `HEAD` commit. |
+| `DAYTONA_PROJECT_DIR` | `/home/daytona/polymarket` | Path inside the sandbox where the repo is cloned and executed. |
+
+The remote worker commands always pass the current trader configuration into the sandbox as process environment variables, but they deliberately exclude the Daytona credentials themselves. In `paper` mode they also exclude `POLYMARKET_PRIVATE_KEY` and `POLYMARKET_PROXY_ADDRESS`.

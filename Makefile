@@ -1,9 +1,12 @@
-.PHONY: install bootstrap-stack dev-up dev-up-core dev-down pull-model wait-services docker-build docker-scan docker-paper-trade-once scan paper-trade-once paper-trade test
+.PHONY: install install-daytona bootstrap-stack dev-up dev-up-core dev-down pull-model wait-services docker-build docker-scan docker-paper-trade-once scan paper-trade-once paper-trade sandbox-status sandbox-scan sandbox-paper-trade-once test
 
 PYTHON ?= python3.11
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
+
+install-daytona:
+	$(PYTHON) -m pip install -e ".[dev,daytona]"
 
 bootstrap-stack:
 	./scripts/bootstrap_oss_stack.sh
@@ -40,6 +43,15 @@ paper-trade-once:
 
 paper-trade:
 	$(PYTHON) -m polymarket_trader.cli paper-trade
+
+sandbox-status:
+	$(PYTHON) -m polymarket_trader.cli sandbox-status
+
+sandbox-scan:
+	$(PYTHON) -m polymarket_trader.cli sandbox-scan --top 10
+
+sandbox-paper-trade-once:
+	$(PYTHON) -m polymarket_trader.cli sandbox-paper-trade-once
 
 test:
 	PYTHONPATH=src $(PYTHON) -m pytest tests/ -v

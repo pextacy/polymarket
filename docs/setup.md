@@ -18,6 +18,12 @@ python3.11 -m pip install -e ".[dev]"
 polymarket --help
 ```
 
+If you want Daytona sandbox workers as well:
+
+```bash
+python3.11 -m pip install -e ".[dev,daytona]"
+```
+
 Clone the local dependency stack if you want the full self-hosted environment:
 
 ```bash
@@ -154,6 +160,14 @@ polymarket report <run_id>
 polymarket risk-status
 ```
 
+Daytona worker commands:
+
+```bash
+polymarket sandbox-status
+polymarket sandbox-scan --top 10
+polymarket sandbox-paper-trade-once
+```
+
 ---
 
 ## Production Setup (PostgreSQL)
@@ -214,6 +228,34 @@ OPENAI_COMPATIBLE_BASE_URL=http://localhost:8000/v1
 OPENAI_COMPATIBLE_API_KEY=local
 LLM_MODEL=your-model-name
 ```
+
+---
+
+## Optional: Daytona Sandbox Workers
+
+Install the optional extra first:
+
+```bash
+python3.11 -m pip install -e ".[dev,daytona]"
+```
+
+Then set at minimum:
+
+```env
+DAYTONA_API_KEY=...
+```
+
+Optional overrides:
+
+```env
+DAYTONA_API_URL=https://app.daytona.io/api
+DAYTONA_TARGET=
+DAYTONA_PROJECT_REPO_URL=https://github.com/pextacy/polymarket.git
+DAYTONA_PROJECT_REF=main
+DAYTONA_PROJECT_DIR=/home/daytona/polymarket
+```
+
+If `DAYTONA_PROJECT_REPO_URL` and `DAYTONA_PROJECT_REF` are left blank, the CLI auto-detects the local git `origin` and current branch, then bootstraps that exact repo state into the sandbox before each remote run.
 
 ---
 
