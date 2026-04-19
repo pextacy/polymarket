@@ -32,6 +32,15 @@ make dev-up-core
 make scan
 ```
 
+Docker-first path:
+
+```bash
+cp .env.example .env
+make dev-up
+make docker-build
+make docker-scan
+```
+
 ---
 
 ## 2. Configure Environment
@@ -72,6 +81,12 @@ For the full local stack:
 make dev-up
 ```
 
+To stop everything again:
+
+```bash
+make dev-down
+```
+
 Lightpanda and PostgreSQL are optional for local development. The system falls back to:
 - Plain HTTP fetch if Lightpanda is unreachable
 - SQLite if `DATABASE_URL` points to a local file (default)
@@ -84,6 +99,12 @@ Run a market scan to confirm all connections work:
 
 ```bash
 make scan
+```
+
+Or run the app inside Docker:
+
+```bash
+make docker-scan
 ```
 
 This calls:
@@ -102,6 +123,12 @@ Single cycle:
 
 ```bash
 make paper-trade-once
+```
+
+Docker variant:
+
+```bash
+make docker-paper-trade-once
 ```
 
 Continuous loop (runs every `SCAN_INTERVAL_SECONDS`, default 15 minutes):

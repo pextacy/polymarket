@@ -1,4 +1,21 @@
 services:
+  trader:
+    build:
+      context: .
+    container_name: polymarket-trader-app
+    profiles: ["app"]
+    env_file:
+      - .env
+    working_dir: /app
+    volumes:
+      - ./:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["polymarket", "--help"]
+
   ollama:
     image: ollama/ollama:latest
     container_name: polymarket-ollama
