@@ -17,6 +17,7 @@ from .connectors.search import SearXNGClient
 from .discovery.scanner import MarketScanner
 from .intelligence.forecaster import Forecaster
 from .intelligence.ranker import Ranker
+from .models.broker import OrderStatus
 from .models.forecast import OpportunityScore
 from .models.market import MarketSnapshot
 from .models.run import RunRecord, RunStatus
@@ -91,7 +92,7 @@ class Orchestrator:
             await self._broker.preflight()
 
         try:
-            markets = await self._scanner.scan(top_n=20)
+            markets = await self._scanner.scan(top_n=self._s.scan_market_limit)
             run.markets_scanned = len(markets)
             await self._store.update_run(run)
 
@@ -126,34 +127,47 @@ class Orchestrator:
                 if plan is None:
                     continue
 
+                await self._store.save_execution_plan(run_id, plan)
                 run.trades_planned += 1
 
                 decision = self._risk.evaluate(plan, market, portfolio, open_orders)
+                await self._store.save_risk_event(run_id, decision)
                 if not decision.approved:
                     continue
 
                 order = await self._broker.submit(plan, run_id)
                 await self._store.save_order(order)
 
-                from .models.broker import OrderStatus
                 if order.status == OrderStatus.FILLED:
                     run.trades_executed += 1
                     open_orders += 1
+                    self._risk.record_win(plan.trade_idea.condition_id)
                     portfolio = await self._broker.get_portfolio()
 
                     if isinstance(self._broker, PaperBroker):
                         fills = self._broker.get_fills()
                         for fill in fills[-1:]:
                             await self._store.save_fill(fill)
+                elif order.status in (
+                    OrderStatus.REJECTED,
+                    OrderStatus.EXPIRED,
+                    OrderStatus.CANCELLED,
+                ):
+                    self._risk.record_loss(plan.trade_idea.condition_id)
 
             run.status = RunStatus.COMPLETED
             run.completed_at = datetime.utcnow()
 
             portfolio = await self._broker.get_portfolio()
             run.realized_pnl = portfolio.realized_pnl
+            await self._store.save_pnl_snapshot(run_id, portfolio)
+
+            if isinstance(self._broker, PaperBroker):
+                await self._store.save_position_snapshot(run_id, self._broker._positions)
 
         except Exception as e:
             logger.exception("Orchestrator fatal error: {}", e)
+            await self._store.save_error(run_id, "orchestrator", str(e))
             run.status = RunStatus.FAILED
             run.last_error = str(e)
             run.error_count += 1
@@ -175,8 +189,19 @@ class Orchestrator:
         async def _process_one(market: MarketSnapshot) -> Optional[OpportunityScore]:
             async with sem:
                 try:
-                    evidence = await self._research.research(market)
-                    await self._store.save_evidence(run_id, market.condition_id, evidence)
+                    cached = await self._store.get_cached_evidence(
+                        market.condition_id, max_age_hours=6.0
+                    )
+                    if cached:
+                        evidence = cached
+                        logger.debug(
+                            "Cache hit: {} evidence items for {}",
+                            len(evidence),
+                            market.condition_id,
+                        )
+                    else:
+                        evidence = await self._research.research(market)
+                        await self._store.save_evidence(run_id, market.condition_id, evidence)
 
                     forecast = await self._forecaster.forecast(market, evidence)
                     if forecast is None:
@@ -199,6 +224,9 @@ class Orchestrator:
                     logger.error("Processing failed for {}: {}", market.condition_id, e)
                     run.error_count += 1
                     await self._store.update_run(run)
+                    await self._store.save_error(
+                        run_id, "research_forecast", str(e), market.condition_id
+                    )
                     return None
 
         results = await asyncio.gather(*[_process_one(m) for m in markets])

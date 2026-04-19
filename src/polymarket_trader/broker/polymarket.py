@@ -59,6 +59,33 @@ class PolymarketBroker(BaseBroker):
                 "Switch to paper mode."
             )
         await self._ensure_creds()
+
+        try:
+            balance_raw = self._py_client.get_balance_allowance()
+            balance = float(balance_raw.get("balance", 0))
+            allowance = float(balance_raw.get("allowance", 0))
+            min_required = self._settings.risk_max_notional_per_market
+            if balance < min_required:
+                raise RuntimeError(
+                    f"Insufficient USDC balance: ${balance:.2f} "
+                    f"(need at least ${min_required:.2f} to place orders)"
+                )
+            if allowance < min_required:
+                raise RuntimeError(
+                    f"Insufficient USDC allowance: ${allowance:.2f} "
+                    f"(need at least ${min_required:.2f}). "
+                    "Approve the CTF Exchange contract to spend your USDC."
+                )
+            logger.info(
+                "Balance: ${:.2f} USDC  Allowance: ${:.2f} USDC",
+                balance,
+                allowance,
+            )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Failed to validate balance/allowance: {e}") from e
+
         logger.info("Polymarket preflight passed")
 
     async def submit(self, plan: ExecutionPlan, run_id: str) -> OrderRecord:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 
 import httpx
@@ -77,6 +77,67 @@ class GammaClient:
             offset += limit
 
         logger.info("Gamma: fetched {} active markets", len(markets))
+        return markets
+
+    async def fetch_resolved_markets(
+        self,
+        days_back: int = 30,
+        min_volume: float = 1000.0,
+        limit: int = 200,
+    ) -> list[MarketSnapshot]:
+        """Fetch recently closed and resolved markets that have a clear winner token."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+        page_size = 100
+        offset = 0
+        markets: list[MarketSnapshot] = []
+
+        while len(markets) < limit:
+            params = {
+                "closed": "true",
+                "archived": "false",
+                "limit": page_size,
+                "offset": offset,
+            }
+            try:
+                data = await self._get("/markets", params=params)
+            except Exception as e:
+                logger.error("Gamma error fetching resolved markets: {}", e)
+                break
+
+            batch = data if isinstance(data, list) else data.get("data", [])
+            if not batch:
+                break
+
+            for raw in batch:
+                snapshot = self._parse_market(raw)
+                if snapshot is None:
+                    continue
+                if snapshot.end_date is not None:
+                    end_aware = (
+                        snapshot.end_date
+                        if snapshot.end_date.tzinfo is not None
+                        else snapshot.end_date.replace(tzinfo=timezone.utc)
+                    )
+                    if end_aware < cutoff:
+                        continue
+                if snapshot.volume_24h < min_volume and snapshot.liquidity < min_volume:
+                    continue
+                if not any(t.winner for t in snapshot.tokens):
+                    continue
+                markets.append(snapshot)
+                if len(markets) >= limit:
+                    break
+
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        logger.info(
+            "Gamma: fetched {} resolved markets ({}d back, min_vol=${:.0f})",
+            len(markets),
+            days_back,
+            min_volume,
+        )
         return markets
 
     async def fetch_market(self, condition_id: str) -> Optional[MarketSnapshot]:

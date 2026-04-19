@@ -2,10 +2,18 @@
 
 ## Document Status
 
-- Status: Draft v1
-- Date: 2026-04-19
-- Repo: 
+- Status: Updated v2
+- Date: 2026-04-20
 - Scope: End-to-end product and technical requirements for turning the current prototype into a continuously running autonomous trading system
+
+### Implementation Status Summary (as of 2026-04-20)
+
+| Milestone | Status | Notes |
+|-----------|--------|-------|
+| M1 — Paper Trader Foundation | ✅ Complete | All deliverables shipped and tested |
+| M2 — Research Stack Upgrade | ✅ Complete | SearXNG + Lightpanda + evidence cache |
+| M3 — Continuous Runtime | 🔶 Partial | Daytona done; health checks + alerting missing |
+| M4 — Live Trading Readiness | 🔶 Partial | Live broker + reconciliation done; kill switch + alerting missing |
 
 ## 1. Overview
 
@@ -23,16 +31,26 @@ The current repo already contains a basic autonomous path in `scripts/python/cli
 
 ## 2. Problem
 
-The existing implementation is a prototype with the following limitations:
+The original prototype (`agents/` directory, preserved for reference) had these limitations — all resolved in the current `src/polymarket_trader/` implementation:
 
-- model access is hard-wired to `ChatOpenAI`
-- embeddings are hard-wired to OpenAI embeddings
-- search is a proof-of-concept Tavily script, not an integrated search subsystem
-- trade selection is mostly generic prompt filtering rather than a defined edge model
-- exceptions recurse indefinitely
-- there is no paper broker, no portfolio state, and no reporting layer
-- there is no reliable 24/7 runtime model
-- tests are placeholders and do not validate trading behavior
+| Original Problem | Resolution |
+|-----------------|------------|
+| `ChatOpenAI` hard-wired | Provider abstraction (`OpenAICompatibleProvider`); Ollama default |
+| OpenAI embeddings hard-wired | Embeddings removed from trading path entirely |
+| Tavily proof-of-concept search | `SearXNGClient` with JSON output, retry, dedup |
+| Generic prompt filtering | Typed `Forecast` + `OpportunityScore` with edge_bps formula |
+| Unbounded recursion on exception | `tenacity` bounded retry; no recursion in orchestrator |
+| No paper broker or portfolio state | `PaperBroker` with positions, cash, PnL, daily loss |
+| No persistent state | SQLAlchemy async ORM, 12 tables, all artifacts stored |
+| No 24/7 runtime | `run_continuous()` loop + Daytona sandbox workers |
+| Tests are placeholders | 39 real tests covering risk, broker, strategy, models, persistence |
+
+Remaining gaps (still open):
+- No Prometheus / Grafana metrics integration
+- No alerting channel (Slack / Telegram / Discord / email)
+- No kill switch mechanism
+- `resume-run` CLI command not implemented
+- Control server not separated from in-process orchestrator
 
 ## 3. Product Goal
 
@@ -437,21 +455,25 @@ These should replace free-form string parsing and tuple-heavy flows in the curre
 
 ## 14. CLI And Operator UX
 
-Add CLI commands for:
+Implemented commands (all working as of 2026-04-20):
 
-- `scan`
-- `paper-trade`
-- `report`
-- `positions`
-- `runs`
-- `risk-status`
-- `sandbox-status`
+```bash
+python -m polymarket_trader.cli scan                    # rank live markets
+python -m polymarket_trader.cli paper-trade [--once]    # run paper loop
+python -m polymarket_trader.cli live-trade  [--once]    # run live loop (gated)
+python -m polymarket_trader.cli report <run_id>         # fills for a run
+python -m polymarket_trader.cli positions [--run-id X]  # positions from DB
+python -m polymarket_trader.cli runs [--limit N]        # run history
+python -m polymarket_trader.cli risk-status             # show risk limits
+python -m polymarket_trader.cli reconcile <run_id>      # fill vs position drift
+python -m polymarket_trader.cli sandbox-status          # Daytona sandbox list
+python -m polymarket_trader.cli sandbox-scan            # remote scan in sandbox
+python -m polymarket_trader.cli sandbox-paper-trade-once  # remote paper trade
+```
 
-Optional later:
+Not yet implemented:
 
-- `live-trade`
-- `resume-run`
-- `reconcile`
+- `resume-run` — resume an interrupted run from its last checkpoint (M4+)
 
 ## 15. Infrastructure Plan
 
@@ -506,71 +528,85 @@ Each sandbox should:
 
 ## 16. Milestones
 
-### Milestone 1: Paper Trader Foundation
+### Milestone 1: Paper Trader Foundation — ✅ COMPLETE
 
-Deliverables:
+Deliverables shipped:
 
-- refactored orchestrator
-- typed domain models
-- provider abstraction for LLM access
-- local-first OpenAI-compatible integration for chat models
-- paper broker
-- persistent run logging
-- risk engine v1
-- real tests
-- CLI commands for `scan`, `paper-trade`, `report`
+- [x] Refactored orchestrator (`orchestrator.py`) with typed domain models
+- [x] Provider abstraction (`providers/`) — Ollama default, OpenRouter + generic OpenAI-compat optional
+- [x] `PaperBroker` — fills, slippage, average-price tracking, daily loss, cash checks
+- [x] `TradeStore` — 12 tables: runs, snapshots, evidence, forecasts, plans, risk events, orders, fills, positions, PnL, errors
+- [x] Risk engine v1 — all 10 rules, per-market + global cooldown
+- [x] 39 real tests covering risk, broker, strategy, models, persistence
+- [x] CLI: `scan`, `paper-trade`, `report`, `positions`, `runs`, `risk-status`
+- [x] Orchestrator fully wires risk feedback (`record_win`/`record_loss`)
+- [x] All persistence calls active (`save_execution_plan`, `save_risk_event`, `save_pnl_snapshot`, `save_position_snapshot`, `save_error`)
 
-Exit criteria:
+Exit criteria met:
+- Full paper-trading loop runs end-to-end
+- No live execution path reachable by default
+- Test suite covers all critical decision logic
 
-- full paper-trading loop runs end-to-end
-- no live execution path is reachable by default
-- test suite covers critical decision logic
+---
 
-### Milestone 2: Research Stack Upgrade
+### Milestone 2: Research Stack Upgrade — ✅ COMPLETE
 
-Deliverables:
+Deliverables shipped:
 
-- integrated SearXNG search client
-- Lightpanda browser worker
-- evidence extraction pipeline
-- source freshness and dedupe logic
-- search and browse budget controls
+- [x] `SearXNGClient` — JSON search, 3-attempt retry, date parsing (3 formats)
+- [x] `LightpandaClient` — CDP fetch with HTTP fallback, scheme allowlist, max page bytes
+- [x] `ResearchPipeline` — parallel query generation, parallel search, browser enrichment, URL + MD5 snippet dedup, 168h freshness filter
+- [x] Evidence caching — `get_cached_evidence()` with 6h window; orchestrator checks cache before re-running pipeline
+- [x] Per-run evidence artifacts stored in DB
 
-Exit criteria:
+Exit criteria met:
+- Agent gathers evidence from search + rendered pages
+- Research artifacts stored per run
+- Cache avoids redundant LLM + search calls within 6h window
 
-- agent can gather evidence from search plus rendered pages
-- research artifacts are stored per run
+---
 
-### Milestone 3: Continuous Runtime
+### Milestone 3: Continuous Runtime — 🔶 PARTIAL
 
-Deliverables:
+Deliverables shipped:
 
-- Daytona worker integration
-- control server orchestration
-- queueing and scheduling
-- health checks
-- retry and recovery framework
-- server deployment docs
+- [x] `DaytonaRuntime` — sandbox lifecycle, bootstrap, remote CLI execution
+- [x] `run_continuous()` — asyncio sleep loop with configurable `SCAN_INTERVAL_SECONDS`
+- [x] CLI: `sandbox-status`, `sandbox-scan`, `sandbox-paper-trade-once`
+- [x] `runtime_env()` — passes settings to sandboxes, excludes secrets in paper mode
 
-Exit criteria:
+Still needed:
 
-- system runs unattended in paper mode for at least 7 days
+- [ ] Health check endpoint (HTTP ping or watchdog)
+- [ ] Retry policy for stuck scan cycles (timeout + restart)
+- [ ] Prometheus metrics (run count, fill count, latency, errors)
+- [ ] Grafana dashboard config
+- [ ] Server deployment docs (systemd / Docker / supervisor)
+- [ ] 7-day unattended paper mode stability verification
 
-### Milestone 4: Live Trading Readiness
+Exit criteria not yet met: unattended 7-day run not confirmed.
 
-Deliverables:
+---
 
-- live broker hardening
-- reconciliation
-- allowance and balance checks
-- execution safety gates
-- kill switch
-- alerting
+### Milestone 4: Live Trading Readiness — 🔶 PARTIAL
 
-Exit criteria:
+Deliverables shipped:
 
-- all live trading checks pass in eligible environment
-- live mode remains opt-in and disabled by default
+- [x] `PolymarketBroker` — geoblock preflight, credential derivation, FOK/FAK/GTC, raw response persistence
+- [x] Balance + allowance validation in `preflight()` — hard fails if below `risk_max_notional_per_market`
+- [x] `reconcile` CLI command — fill vs position cost-basis drift detection
+- [x] `live-trade` CLI command — forces LIVE mode, supports `--once`
+- [x] Geoblock check gates all live order flow
+
+Still needed:
+
+- [ ] Kill switch mechanism (file flag or signal handler that halts trading immediately)
+- [ ] Alerting integration (at minimum: email or Telegram on risk breach / stuck loop)
+- [ ] `resume-run` command
+- [ ] Live broker end-to-end test in eligible environment
+- [ ] Balance / allowance approval helper script (approve CTF Exchange)
+
+Exit criteria not yet met: kill switch and alerting missing.
 
 ## 17. Acceptance Criteria
 
@@ -607,26 +643,29 @@ The project is considered successful for the first production-grade release when
 
 ## 19. Open Questions
 
-- which specific local models should be used for ranking, forecasting, and extraction?
-- should embeddings also move away from OpenAI immediately, or can that be deferred until after the chat-model migration?
-- should SearXNG and Lightpanda live on the same host as the control server or behind separate internal services?
-- should the first 24/7 runtime use one long-lived sandbox or short-lived task sandboxes managed by the control server?
-- what database should be the default for persisted state: SQLite for local dev and Postgres for server, or Postgres everywhere?
-- what alerting channel is preferred for production: email, Slack, Telegram, or Discord?
+| Question | Status |
+|----------|--------|
+| Which local models for ranking vs forecasting vs extraction? | Open — use `LLM_MODEL_RANKING/FORECASTING/EXTRACTION` overrides to tune per-task |
+| Migrate embeddings off OpenAI? | Resolved — embeddings removed from trading path entirely; no embedding dependency remains |
+| SearXNG + Lightpanda: same host or separate services? | Open — docker-compose puts them on same host; separate for production recommended |
+| One long-lived sandbox or short-lived task sandboxes? | Open — current code supports both; decision deferred to M3 ops work |
+| SQLite local + Postgres server, or Postgres everywhere? | Resolved — SQLite for dev (`DATABASE_URL` default), asyncpg for Postgres in production; same ORM code |
+| Alerting channel? | Open — required for M4 exit; Telegram recommended for simplicity |
+| How to approve USDC allowance for live trading? | Open — need helper script to call CTF Exchange `approve()` via web3 |
 
-## 20. Immediate Implementation Plan
+## 20. Remaining Work (as of 2026-04-20)
 
-Order of execution:
+Steps 1–7 are complete. Remaining:
 
-1. replace direct OpenAI chat calls with a provider abstraction and Ollama default
-2. refactor the trader into explicit stages and typed objects
-3. add paper broker and persistent run records
-4. add risk engine and structured reporting
-5. replace Tavily proof-of-concept with SearXNG client
-6. add Lightpanda browser worker for dynamic page retrieval
-7. add Daytona orchestration for isolated worker execution
-8. add server deployment, health checks, and 24/7 operations
-9. harden live broker only after paper mode is stable
+8. **Health checks + watchdog** — HTTP ping endpoint or file-based heartbeat; restart policy for stuck cycles
+9. **Prometheus metrics** — instrument `run_once()` with counters: runs, fills, errors, latency; expose `/metrics`
+10. **Grafana dashboard** — standard trading dashboard: PnL over time, fill rate, error rate, risk rejections
+11. **Alerting** — Telegram bot (or email) firing on: stuck loop, N consecutive errors, risk breach, daily loss limit hit
+12. **Kill switch** — `SIGTERM` handler + `kill_switch.flag` file check at top of each cycle
+13. **`resume-run` command** — load last incomplete `RunRecord` and continue from scored markets
+14. **Live environment test** — end-to-end live order test in eligible jurisdiction with small notional
+15. **USDC allowance helper** — script to approve CTF Exchange contract once per wallet
+16. **7-day paper stability run** — confirm unattended operation, check for memory leaks and DB growth
 
 ## 21. External References
 

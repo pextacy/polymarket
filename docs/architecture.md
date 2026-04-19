@@ -182,9 +182,10 @@ In-memory simulation. No external calls.
 
 Live broker backed by `py-clob-client`.
 
-Pre-flight required before first order:
-1. `ClobClient.check_geoblock()` — hard fail if blocked
-2. Derive API credentials from private key (EIP-712)
+Pre-flight required before first order (all three must pass):
+1. `ClobClient.check_geoblock()` — hard fail if blocked, switches to paper-only
+2. Derive API credentials from private key (EIP-712 signature)
+3. Balance + allowance check — hard fail if USDC balance or CTF Exchange allowance < `RISK_MAX_NOTIONAL_PER_MARKET`
 
 Order flow: `create_order(OrderArgs)` → `post_order(signed, order_type)` → parse response status.
 
@@ -196,16 +197,25 @@ Supports `FOK` and `FAK` order types. Persists raw exchange response in `OrderRe
 
 `TradeStore` wraps SQLAlchemy async session. Tables:
 
-| Table | Purpose |
-|-------|---------|
-| `runs` | One row per `run_once()` call |
-| `market_snapshots` | Every market scanned per run |
-| `evidence` | Evidence items gathered per market per run |
-| `forecasts` | LLM forecast per market per run |
-| `orders` | Every order submitted (paper or live) |
-| `fills` | Every fill produced |
+| Table | Purpose | Written by |
+|-------|---------|-----------|
+| `runs` | One row per `run_once()` call | `save_run()` / `update_run()` |
+| `market_snapshots` | Every market scanned per run | `save_market_snapshot()` |
+| `evidence` | Evidence items per market per run | `save_evidence()` |
+| `forecasts` | LLM forecast per market per run | `save_forecast()` |
+| `execution_plans` | Every non-None plan produced | `save_execution_plan()` |
+| `risk_events` | Every risk decision (approved + rejected) | `save_risk_event()` |
+| `orders` | Every order submitted (paper or live) | `save_order()` |
+| `fills` | Every fill produced | `save_fill()` |
+| `positions` | Position snapshot at run end | `save_position_snapshot()` |
+| `pnl_snapshots` | Portfolio cash/PnL snapshot at run end | `save_pnl_snapshot()` |
+| `errors` | Exceptions from orchestrator + per-market | `save_error()` |
 
-Database URL is configurable: SQLite (local dev) or PostgreSQL (production).
+Notable methods:
+- `get_cached_evidence(condition_id, max_age_hours=6.0)` — returns evidence from previous runs within the freshness window; orchestrator checks this before calling the full research pipeline
+- `reconcile_positions(run_id)` — compares fill net flows against position cost basis and returns drift records
+
+Database URL configurable: `sqlite+aiosqlite:///./polymarket_trader.db` (local dev) or `postgresql+asyncpg://...` (production).
 
 ---
 
@@ -214,21 +224,28 @@ Database URL is configurable: SQLite (local dev) or PostgreSQL (production).
 ```
 Orchestrator.run_once()
   │
-  ├─ MarketScanner.scan()
+  ├─ [LIVE only] PolymarketBroker.preflight()
+  │    ├─ ClobClient.check_geoblock()           → hard fail if blocked
+  │    ├─ derive API credentials (EIP-712)
+  │    └─ get_balance_allowance()               → hard fail if insufficient
+  │
+  ├─ MarketScanner.scan(top_n=SCAN_MARKET_LIMIT)
   │    ├─ GammaClient.fetch_active_markets()    → list[raw market]
-  │    ├─ Ranker.rank()                         → list[MarketSnapshot] (top 20)
+  │    ├─ Ranker.rank()                         → list[MarketSnapshot] (LLM-ranked)
   │    └─ ClobClient.enrich_market() ×N         → list[MarketSnapshot] + bid/ask
   │
   ├─ TradeStore.save_market_snapshot() ×N
   │
   ├─ For each market (concurrency=3):
-  │    ├─ ResearchPipeline.research()
+  │    ├─ TradeStore.get_cached_evidence()      → hit: skip pipeline, use cached items
+  │    │                                           miss: run full pipeline below
+  │    ├─ ResearchPipeline.research()           [cache miss only]
   │    │    ├─ LLM provider: generate 3 queries
   │    │    ├─ SearXNG: parallel search ×3
   │    │    ├─ Lightpanda: enrich top results (optional)
-  │    │    └─ Deduplicate + freshness filter
+  │    │    └─ Deduplicate (URL + MD5 snippet) + freshness filter (168h)
   │    │
-  │    ├─ TradeStore.save_evidence()
+  │    ├─ TradeStore.save_evidence()            [cache miss only]
   │    │
   │    ├─ Forecaster.forecast()
   │    │    └─ LLM provider: complete_json(_ForecastOut)
@@ -241,11 +258,19 @@ Orchestrator.run_once()
   │
   ├─ For each scored opportunity:
   │    ├─ ExecutionPlanner.plan()               → ExecutionPlan | None
+  │    ├─ TradeStore.save_execution_plan()
   │    ├─ RiskEngine.evaluate()                 → RiskDecision
-  │    ├─ if APPROVED: broker.submit()          → OrderRecord
-  │    └─ TradeStore.save_order() + save_fill()
+  │    ├─ TradeStore.save_risk_event()
+  │    ├─ if APPROVED:
+  │    │    ├─ broker.submit()                  → OrderRecord
+  │    │    ├─ TradeStore.save_order()
+  │    │    ├─ [FILLED] RiskEngine.record_win()
+  │    │    └─ [FILLED] TradeStore.save_fill()
+  │    └─ if REJECTED/EXPIRED: RiskEngine.record_loss()
   │
-  └─ TradeStore.update_run() with final stats
+  ├─ TradeStore.save_pnl_snapshot()             (cash, realized PnL, daily loss)
+  ├─ TradeStore.save_position_snapshot()        [paper mode only]
+  └─ TradeStore.update_run()                    (final stats + status)
 ```
 
 ---

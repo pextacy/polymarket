@@ -1,15 +1,31 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
 
 # Virtual environments
-.venv
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Build / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
+
+# Type checking / mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
 
 # IDE
 .vscode/
@@ -18,23 +34,46 @@ venv.bak/
 *.swo
 *~
 .DS_Store
+Thumbs.db
 
-# Environment files
+# Environment / secrets
 .env
 .env.local
+.env.*.local
 *.local
 
-# Project specific
-.cache/
+# Database files (SQLite — use DATABASE_URL for real DBs)
 *.db
 *.sqlite
-temp/
-tmp/
+*.sqlite3
+polymarket_trader.db
+
+# Logs
+logs/
+*.log
 
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+coverage.xml
 
-# Logs
-*.log
+# Temporary / scratch
+.cache/
+temp/
+tmp/
+scratch/
+
+# Daytona
+.daytona/
+
+# OSS stack vendor dir (large binaries, pulled at setup time)
+oss-stack/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Compiled C extensions
+*.so
+*.dylib

@@ -196,40 +196,64 @@ def report(ctx: click.Context, run_id: str) -> None:
 
 
 @cli.command()
+@click.option("--run-id", default=None, help="Specific run ID (defaults to most recent run)")
 @click.pass_context
-def positions(ctx: click.Context) -> None:
-    """Show current portfolio positions."""
+def positions(ctx: click.Context, run_id: str | None) -> None:
+    """Show portfolio positions from a run (defaults to most recent)."""
     settings = ctx.obj["settings"]
 
     async def _run() -> None:
-        from .broker.paper import PaperBroker
-        broker = PaperBroker(
-            initial_cash=settings.paper_initial_cash,
-            fill_slippage_bps=settings.paper_fill_slippage_bps,
-        )
-        portfolio = await broker.get_portfolio()
+        store = TradeStore(settings.database_url)
+        await store.init()
 
-        console.print(f"[bold]Cash:[/bold] ${portfolio.cash_usdc:,.2f}")
-        console.print(f"[bold]Realized PnL:[/bold] ${portfolio.realized_pnl:,.2f}")
-        console.print(f"[bold]Open Positions:[/bold] {portfolio.open_position_count()}")
+        if run_id is None:
+            runs = await store.get_runs(limit=1)
+            if not runs:
+                console.print("[yellow]No runs found in the database.[/yellow]")
+                return
+            resolved_run_id = runs[0]["run_id"]
+        else:
+            resolved_run_id = run_id
 
-        if portfolio.positions:
-            table = Table(title="Open Positions")
-            table.add_column("Token ID", max_width=20)
+        pnl_history = await store.get_pnl_history(resolved_run_id)
+        if pnl_history:
+            latest = pnl_history[-1]
+            console.print(f"[bold]Run:[/bold] {resolved_run_id[:8]}")
+            console.print(f"[bold]Cash:[/bold] ${latest['cash_usdc']:,.2f}")
+            console.print(f"[bold]Realized PnL:[/bold] ${latest['realized_pnl']:,.2f}")
+            console.print(f"[bold]Daily Loss:[/bold] ${latest['daily_loss']:,.2f}")
+            console.print(f"[bold]Open Positions:[/bold] {latest['open_position_count']}")
+
+        positions_data = await store.get_positions_for_run(resolved_run_id)
+        if positions_data:
+            table = Table(title=f"Positions — run {resolved_run_id[:8]}")
+            table.add_column("Condition", max_width=16)
             table.add_column("Outcome")
+            table.add_column("Category")
             table.add_column("Size", justify="right")
             table.add_column("Avg Entry", justify="right")
             table.add_column("Cost Basis", justify="right")
+            table.add_column("Realized PnL", justify="right")
 
-            for token_id, pos in portfolio.positions.items():
+            for p in positions_data:
+                pnl = p["realized_pnl"]
+                pnl_str = (
+                    f"[green]${pnl:.2f}[/green]"
+                    if pnl >= 0
+                    else f"[red]-${abs(pnl):.2f}[/red]"
+                )
                 table.add_row(
-                    token_id[:20],
-                    pos.outcome,
-                    f"{pos.size_tokens:.4f}",
-                    f"{pos.avg_entry_price:.4f}",
-                    f"${pos.cost_basis_usdc:.2f}",
+                    p["condition_id"][:16],
+                    p["outcome"],
+                    p["category"],
+                    f"{p['size_tokens']:.4f}",
+                    f"{p['avg_entry_price']:.4f}",
+                    f"${p['cost_basis_usdc']:.2f}",
+                    pnl_str,
                 )
             console.print(table)
+        else:
+            console.print(f"No open positions in run {resolved_run_id[:8]}.")
 
     asyncio.run(_run())
 
@@ -351,6 +375,173 @@ def sandbox_paper_trade_once(ctx: click.Context, role: str, reuse: bool) -> None
             raise click.ClickException("Remote paper trade failed")
     except DaytonaRuntimeError as e:
         raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.option("--days", default=30, show_default=True, help="How many days back to look for resolved markets")
+@click.option("--cash", default=10_000.0, show_default=True, help="Starting cash in USDC")
+@click.option("--min-volume", default=5_000.0, show_default=True, help="Minimum market volume/liquidity")
+@click.option("--limit", default=50, show_default=True, help="Max number of resolved markets to evaluate")
+@click.option("--no-cache", is_flag=True, help="Always re-fetch evidence, ignore DB cache")
+@click.pass_context
+def backtest(
+    ctx: click.Context,
+    days: int,
+    cash: float,
+    min_volume: float,
+    limit: int,
+    no_cache: bool,
+) -> None:
+    """Run strategy pipeline against recently resolved markets and measure hypothetical PnL."""
+    settings = ctx.obj["settings"]
+    settings.trading_mode = TradingMode.PAPER
+
+    async def _run() -> None:
+        from .backtest.runner import BacktestRunner
+        from rich.table import Table
+
+        runner = BacktestRunner(settings)
+        summary = await runner.run(
+            days_back=days,
+            initial_cash=cash,
+            min_volume=min_volume,
+            market_limit=limit,
+            use_evidence_cache=not no_cache,
+        )
+
+        console.print()
+        console.rule("[bold]Backtest Summary[/bold]")
+
+        stat_table = Table(show_header=False, box=None, padding=(0, 2))
+        stat_table.add_column("Metric", style="bold")
+        stat_table.add_column("Value", justify="right")
+
+        win_color = "green" if summary.winning_trades >= summary.losing_trades else "red"
+        pnl_color = "green" if summary.total_pnl >= 0 else "red"
+        roi_color = "green" if summary.roi_pct >= 0 else "red"
+
+        stat_table.add_row("Markets evaluated", str(summary.total_markets_evaluated))
+        stat_table.add_row("Trades taken", str(summary.total_trades))
+        stat_table.add_row(
+            "Win / Loss",
+            f"[{win_color}]{summary.winning_trades} / {summary.losing_trades}[/{win_color}]",
+        )
+        stat_table.add_row(
+            "Win rate",
+            f"[{win_color}]{summary.win_rate * 100:.1f}%[/{win_color}]",
+        )
+        stat_table.add_row(
+            "Total PnL",
+            f"[{pnl_color}]${summary.total_pnl:+.2f}[/{pnl_color}]",
+        )
+        stat_table.add_row(
+            "ROI",
+            f"[{roi_color}]{summary.roi_pct:+.2f}%[/{roi_color}]",
+        )
+        stat_table.add_row("Total invested", f"${summary.total_invested:.2f}")
+        stat_table.add_row("Initial cash", f"${summary.initial_cash:,.2f}")
+        stat_table.add_row("Final cash", f"${summary.final_cash:,.2f}")
+        stat_table.add_row("Avg edge at entry", f"{summary.avg_edge_bps:.0f} bps")
+        stat_table.add_row("Avg confidence", f"{summary.avg_confidence * 100:.1f}%")
+        stat_table.add_row("Sharpe ratio", f"{summary.sharpe_ratio:.2f}")
+        stat_table.add_row("Max drawdown", f"${summary.max_drawdown:.2f}")
+        stat_table.add_row("Skipped (no edge)", str(summary.skipped_no_edge))
+        stat_table.add_row("Skipped (no plan)", str(summary.skipped_no_plan))
+        stat_table.add_row("Skipped (risk)", str(summary.skipped_risk))
+        stat_table.add_row("Forecast failures", str(summary.forecast_failures))
+        console.print(stat_table)
+
+        if summary.trades:
+            console.print()
+            trade_table = Table(title="Per-Trade Results", show_lines=False)
+            trade_table.add_column("Question", max_width=50, style="cyan")
+            trade_table.add_column("Traded", justify="center")
+            trade_table.add_column("Won", justify="center")
+            trade_table.add_column("Entry", justify="right")
+            trade_table.add_column("Size", justify="right")
+            trade_table.add_column("PnL", justify="right")
+            trade_table.add_column("Edge", justify="right")
+
+            for t in sorted(summary.trades, key=lambda x: x.pnl, reverse=True):
+                won_str = "[green]YES[/green]" if t.won else "[red]NO[/red]"
+                pnl_str = (
+                    f"[green]${t.pnl:+.2f}[/green]"
+                    if t.pnl >= 0
+                    else f"[red]${t.pnl:+.2f}[/red]"
+                )
+                trade_table.add_row(
+                    t.question[:50],
+                    t.outcome_traded,
+                    won_str,
+                    f"{t.entry_price:.3f}",
+                    f"${t.size_usdc:.2f}",
+                    pnl_str,
+                    f"{t.edge_bps:.0f}bps",
+                )
+            console.print(trade_table)
+
+    asyncio.run(_run())
+
+
+@cli.command("live-trade")
+@click.option("--once", is_flag=True, help="Run a single cycle and exit")
+@click.pass_context
+def live_trade(ctx: click.Context, once: bool) -> None:
+    """Run the live trading loop. Geoblock + balance checks run before every cycle."""
+    settings = ctx.obj["settings"]
+    settings.trading_mode = TradingMode.LIVE
+
+    async def _run() -> None:
+        orch = Orchestrator(settings)
+        if once:
+            run = await orch.run_once()
+            console.print(
+                f"[bold]Run complete[/bold] id={run.run_id} "
+                f"status={run.status.value} "
+                f"markets={run.markets_scanned} "
+                f"executed={run.trades_executed} "
+                f"pnl=${run.realized_pnl:.2f}"
+            )
+        else:
+            await orch.run_continuous()
+
+    asyncio.run(_run())
+
+
+@cli.command()
+@click.argument("run_id")
+@click.pass_context
+def reconcile(ctx: click.Context, run_id: str) -> None:
+    """Compare fills vs persisted positions for a run and surface any drift."""
+    settings = ctx.obj["settings"]
+
+    async def _run() -> None:
+        store = TradeStore(settings.database_url)
+        await store.init()
+        discrepancies = await store.reconcile_positions(run_id)
+
+        if not discrepancies:
+            console.print(
+                f"[green]No position drift found for run {run_id[:8]}[/green]"
+            )
+            return
+
+        table = Table(title=f"Position Drift — run {run_id[:8]}")
+        table.add_column("Condition", max_width=16)
+        table.add_column("Net Fills", justify="right")
+        table.add_column("Position Cost", justify="right")
+        table.add_column("Drift", justify="right", style="red")
+
+        for d in discrepancies:
+            table.add_row(
+                d["condition_id"][:16],
+                f"${d['net_fills_usdc']:.4f}",
+                f"${d['position_cost_basis_usdc']:.4f}",
+                f"${d['drift_usdc']:.4f}",
+            )
+        console.print(table)
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -4,9 +4,9 @@
 
 This is an autonomous research and trading agent for Polymarket prediction markets. The goal is to evolve a prototype into a continuously running, production-grade trading platform that discovers markets, gathers evidence, estimates probabilities, and executes trades with strict risk controls.
 
-**Current state:** Early prototype with basic autonomous path in `scripts/python/cli.py` and `agents/application/trade.py`. Not safe or complete for unattended operation.
+**Current state (2026-04-20):** M1 + M2 complete. Full paper trading loop runs end-to-end. SearXNG + Lightpanda integrated. Daytona sandbox workers operational. Live broker exists with geoblock + balance checks. 39 passing tests. All persistence paths wired.
 
-**Target state:** A fully observable, paper-first autonomous trading system with isolated execution, self-hosted search, and headless browsing.
+**Remaining for production:** Health checks, Prometheus metrics, alerting channel, kill switch, 7-day stability run. See `docs/prd.md` section 20 for the full remaining work list.
 
 ---
 
@@ -172,51 +172,58 @@ SearXNG result schema:
 ## CLI Commands
 
 ```bash
-# Core (Milestone 1)
-python -m polymarket_trader.cli scan
-python -m polymarket_trader.cli paper-trade
-python -m polymarket_trader.cli report
-python -m polymarket_trader.cli positions
-python -m polymarket_trader.cli runs
-python -m polymarket_trader.cli risk-status
-python -m polymarket_trader.cli sandbox-status
-python -m polymarket_trader.cli sandbox-scan
-python -m polymarket_trader.cli sandbox-paper-trade-once
+# All implemented and working
+python -m polymarket_trader.cli scan                     # rank live markets
+python -m polymarket_trader.cli paper-trade [--once]     # paper loop
+python -m polymarket_trader.cli live-trade  [--once]     # live loop (gated by geoblock + balance)
+python -m polymarket_trader.cli report <run_id>          # fills for a run
+python -m polymarket_trader.cli positions [--run-id X]   # positions from DB
+python -m polymarket_trader.cli runs [--limit N]         # run history
+python -m polymarket_trader.cli risk-status              # show risk limits
+python -m polymarket_trader.cli reconcile <run_id>       # fill vs position drift
+python -m polymarket_trader.cli sandbox-status           # Daytona sandbox list
+python -m polymarket_trader.cli sandbox-scan             # remote scan in sandbox
+python -m polymarket_trader.cli sandbox-paper-trade-once # remote paper trade
 
-# Later (Milestone 4+)
-python -m polymarket_trader.cli live-trade       # requires explicit opt-in
-python -m polymarket_trader.cli resume-run
-python -m polymarket_trader.cli reconcile
+# Not yet implemented
+# python -m polymarket_trader.cli resume-run             # M4+
 ```
 
 ---
 
 ## Milestones
 
-### M1 — Paper Trader Foundation
+### M1 — Paper Trader Foundation ✅ COMPLETE
 - Refactored orchestrator with typed domain models
-- Provider abstraction + local-first OpenAI-compatible integration
-- PaperBroker + persistent run logging
-- Risk engine v1
-- Real tests covering: pricing, sizing, risk, execution guards
-- Exit: full paper loop end-to-end, no live path reachable by default
+- Provider abstraction + Ollama default
+- PaperBroker + full persistence (12 DB tables)
+- Risk engine v1 — all 10 rules + cooldown feedback loop
+- 39 real tests
+- All orchestrator persistence calls wired: plans, risk events, PnL snapshots, position snapshots, errors
 
-### M2 — Research Stack Upgrade
-- Integrated SearXNG client (replaces Tavily proof-of-concept)
-- Lightpanda browser worker
-- Evidence extraction + freshness/dedupe logic
-- Exit: agent gathers evidence from search + rendered pages, stores artifacts per run
+### M2 — Research Stack Upgrade ✅ COMPLETE
+- SearXNG client — JSON output, retry, date parsing
+- Lightpanda browser worker — CDP fetch with HTTP fallback
+- Evidence pipeline — dedup, 168h freshness filter
+- Evidence caching — 6h window, checked before re-running pipeline
 
-### M3 — Continuous Runtime
-- Daytona worker integration
-- Control server orchestration + scheduling
-- Health checks, retry, recovery framework
-- Exit: remote sandbox scan and paper-trade workers run through Daytona, then unattended paper mode stays stable for 7+ days
+### M3 — Continuous Runtime 🔶 PARTIAL
+- ✅ Daytona sandbox workers (scan + paper-trade-once)
+- ✅ `run_continuous()` loop
+- ✅ `sandbox-status`, `sandbox-scan`, `sandbox-paper-trade-once` CLI
+- ❌ Health check endpoint
+- ❌ Prometheus metrics
+- ❌ Grafana dashboard
+- ❌ 7-day stability run
 
-### M4 — Live Trading Readiness
-- Live broker hardening + reconciliation
-- Kill switch + alerting
-- Exit: all live checks pass in eligible environment, live mode opt-in only
+### M4 — Live Trading Readiness 🔶 PARTIAL
+- ✅ `PolymarketBroker` — geoblock + balance + allowance preflight
+- ✅ `live-trade` CLI command
+- ✅ `reconcile` CLI command — fill vs position drift detection
+- ❌ Kill switch (signal handler + flag file)
+- ❌ Alerting (Telegram / email)
+- ❌ `resume-run` command
+- ❌ Live environment end-to-end test
 
 ---
 
