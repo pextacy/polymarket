@@ -10,6 +10,8 @@
 
 ## 1. Clone and Install
 
+This repo is now a monorepo. The vendored infrastructure code is already present under `oss-stack/`, and the earlier project code is already present under `agents/`. You do not need to clone extra dependency repos just to inspect or work on the full codebase.
+
 ```bash
 # Install in editable mode with dev dependencies
 python3.11 -m pip install -e ".[dev]"
@@ -22,12 +24,6 @@ If you want Daytona sandbox workers as well:
 
 ```bash
 python3.11 -m pip install -e ".[dev,daytona]"
-```
-
-Clone the local dependency stack if you want the full self-hosted environment:
-
-```bash
-./scripts/bootstrap_oss_stack.sh
 ```
 
 Fast path:
@@ -86,6 +82,16 @@ For the full local stack:
 ```bash
 make dev-up
 ```
+
+The vendored infrastructure source lives in:
+
+- `oss-stack/daytona`
+- `oss-stack/lightpanda-browser`
+- `oss-stack/ollama`
+- `oss-stack/qdrant`
+- `oss-stack/searxng`
+- `oss-stack/searxng-docker`
+- `oss-stack/vllm`
 
 To stop everything again:
 

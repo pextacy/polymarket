@@ -1,6 +1,6 @@
-# External Dependencies
+# Vendored Dependencies
 
-The following repositories are part of the local development stack for this project:
+The following repositories are now vendored directly inside this repository under `oss-stack/`:
 
 - `daytona`
 - `lightpanda-browser`
@@ -10,54 +10,45 @@ The following repositories are part of the local development stack for this proj
 - `searxng-docker`
 - `vllm`
 
-These repositories are intentionally **not** committed inside `pextacy/polymarket`.
+The earlier project code is also vendored directly under `agents/`.
 
-Why:
+## Source Of Truth
 
-- they are large upstream projects with their own release cycles
-- vendoring them into this repo would make the repository unnecessarily heavy
-- submodules were intentionally avoided for collaborator workflow reasons
+`pextacy/polymarket` is now the monorepo source of truth for:
+
+- the current trader in `src/polymarket_trader/`
+- the earlier `agents/` code
+- the open-source infrastructure snapshot in `oss-stack/`
+
+This repo no longer relies on separate submodules or separate local clones for the primary collaboration workflow.
+
+## Why This Changed
+
+- collaborators needed one cloneable repo that already contains the full codebase
+- submodules were intentionally avoided
+- local-only workspace paths were not visible on GitHub
+
+## Tradeoff
+
+This repo is now much heavier than a thin app repo because it vendors large upstream projects. That is an intentional workflow tradeoff.
 
 ## Important
 
 Local paths like:
 
-- `/Users/arhansubasi/agents/oss-stack`
-- `/Users/arhansubasi/agents/agents`
+- `oss-stack/`
+- `agents/`
 
-are workspace directories on one machine. GitHub will not show them inside this repository because they are not part of this repo's git tree.
+are now part of this repository's git tree.
 
-## Shared Setup
+Separate external forks can still exist for upstream sync or experimentation, but they are no longer the main documented setup path.
 
-Use the bootstrap script from the project root:
+## Deprecated Bootstrap Script
+
+The old bootstrap flow is no longer required for normal setup:
 
 ```bash
 ./scripts/bootstrap_oss_stack.sh
 ```
 
-By default it clones the stack into:
-
-```bash
-../oss-stack
-```
-
-It also supports selecting a GitHub owner:
-
-```bash
-GITHUB_OWNER=pextacy ./scripts/bootstrap_oss_stack.sh
-```
-
-Or cloning directly from upstream instead of forks:
-
-```bash
-USE_FORKS=0 ./scripts/bootstrap_oss_stack.sh
-```
-
-## Recommended Collaboration Model
-
-If two people need shared ownership of the forked dependencies, the forks should live under:
-
-- a shared GitHub organization, or
-- the actual shared user account you both control
-
-At the moment, the cloned dependency forks were created under the authenticated GitHub account used in this environment. If you want them under `pextacy`, authenticate as `pextacy` and rerun the forking flow, or transfer the existing forks there.
+It is kept only as a compatibility helper and now points people back to the vendored monorepo layout.
