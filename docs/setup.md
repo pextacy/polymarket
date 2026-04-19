@@ -24,6 +24,14 @@ Clone the local dependency stack if you want the full self-hosted environment:
 ./scripts/bootstrap_oss_stack.sh
 ```
 
+Fast path:
+
+```bash
+make install
+make dev-up-core
+make scan
+```
+
 ---
 
 ## 2. Configure Environment
@@ -49,20 +57,19 @@ All other settings have safe defaults. `openrouter` and other OpenAI-compatible 
 ## 3. Start Infrastructure Services
 
 ```bash
-docker-compose up -d ollama searxng
+make dev-up-core
 ```
 
-Pull the default model into the local Ollama instance:
+That command:
+
+- starts `ollama` and `searxng`
+- waits for both services to be reachable
+- pulls the configured Ollama model
+
+For the full local stack:
 
 ```bash
-docker exec -it polymarket-ollama ollama pull llama3.2:3b
-```
-
-Wait for Ollama and SearXNG to be healthy:
-
-```bash
-curl http://localhost:11434/api/tags
-curl http://localhost:8888/search?q=test&format=json
+make dev-up
 ```
 
 Lightpanda and PostgreSQL are optional for local development. The system falls back to:
@@ -76,7 +83,7 @@ Lightpanda and PostgreSQL are optional for local development. The system falls b
 Run a market scan to confirm all connections work:
 
 ```bash
-polymarket scan --top 10
+make scan
 ```
 
 This calls:
@@ -94,13 +101,13 @@ If you see a table of markets, the setup is working.
 Single cycle:
 
 ```bash
-polymarket paper-trade --once
+make paper-trade-once
 ```
 
 Continuous loop (runs every `SCAN_INTERVAL_SECONDS`, default 15 minutes):
 
 ```bash
-polymarket paper-trade
+make paper-trade
 ```
 
 Logs are written to `logs/trader.log`. The database is created automatically at `polymarket_trader.db`.
@@ -209,7 +216,7 @@ See [trading-modes.md](trading-modes.md) for full details.
 ## Running Tests
 
 ```bash
-python3.11 -m pytest tests/ -v
+make test
 ```
 
 No external services are required to run the test suite. All tests use in-memory state.
