@@ -1,0 +1,61 @@
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: polymarket-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+
+  lightpanda:
+    image: lightpanda/lightpanda:latest
+    container_name: polymarket-lightpanda
+    ports:
+      - "9222:9222"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: polymarket-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: polymarket_trader
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trader -d polymarket_trader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: polymarket-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
