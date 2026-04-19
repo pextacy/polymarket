@@ -18,6 +18,12 @@ python3.11 -m pip install -e ".[dev]"
 polymarket --help
 ```
 
+Clone the local dependency stack if you want the full self-hosted environment:
+
+```bash
+./scripts/bootstrap_oss_stack.sh
+```
+
 ---
 
 ## 2. Configure Environment
