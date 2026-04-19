@@ -11,7 +11,7 @@ from ..connectors.browser import LightpandaClient
 from ..connectors.search import SearXNGClient
 from ..models.market import MarketSnapshot
 from ..models.research import EvidenceItem
-from ..providers.openrouter import OpenRouterProvider
+from ..providers.base import BaseLLMProvider
 
 
 class _QueriesOut(BaseModel):
@@ -29,7 +29,7 @@ class ResearchPipeline:
         self,
         search: SearXNGClient,
         browser: Optional[LightpandaClient],
-        provider: OpenRouterProvider,
+        provider: BaseLLMProvider,
         extraction_model: Optional[str] = None,
         max_sources: int = 5,
     ) -> None:

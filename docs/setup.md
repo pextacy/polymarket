@@ -3,8 +3,8 @@
 ## Requirements
 
 - Python 3.11+
-- Docker + Docker Compose (for SearXNG, Lightpanda, PostgreSQL, Redis)
-- An OpenRouter API key (get one at https://openrouter.ai)
+- Docker + Docker Compose (for Ollama, SearXNG, Lightpanda, PostgreSQL, Redis)
+- A local Ollama model for the default setup
 
 ---
 
@@ -29,27 +29,33 @@ cp .env.example .env
 Open `.env` and fill in the required values:
 
 ```env
-# Required
-OPENROUTER_API_KEY=sk-or-v1-...
-
-# Optional — defaults work for local dev
-LLM_MODEL=openai/gpt-4o
+# Local-first default
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=llama3.2:3b
 TRADING_MODE=paper
 ```
 
-All other settings have safe defaults. See [configuration.md](configuration.md) for the full reference.
+All other settings have safe defaults. `openrouter` and other OpenAI-compatible backends remain available as explicit overrides. See [configuration.md](configuration.md) for the full reference.
 
 ---
 
 ## 3. Start Infrastructure Services
 
 ```bash
-docker-compose up -d searxng
+docker-compose up -d ollama searxng
 ```
 
-Wait for SearXNG to be healthy:
+Pull the default model into the local Ollama instance:
 
 ```bash
+docker exec -it polymarket-ollama ollama pull llama3.2:3b
+```
+
+Wait for Ollama and SearXNG to be healthy:
+
+```bash
+curl http://localhost:11434/api/tags
 curl http://localhost:8888/search?q=test&format=json
 ```
 
@@ -70,7 +76,7 @@ polymarket scan --top 10
 This calls:
 1. Polymarket Gamma API (no auth required)
 2. Polymarket CLOB API (no auth required for read)
-3. OpenRouter API (requires key)
+3. Local Ollama via OpenAI-compatible API
 4. SearXNG (requires the Docker service)
 
 If you see a table of markets, the setup is working.
@@ -147,6 +153,27 @@ LIGHTPANDA_WS_URL=ws://localhost:9222
 ```
 
 The research pipeline automatically uses Lightpanda for JavaScript-heavy pages when this URL is reachable. If the service is down, it falls back to plain HTTP without crashing.
+
+---
+
+## Optional: Alternate LLM Backends
+
+To use OpenRouter instead of local Ollama:
+
+```env
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+LLM_MODEL=openai/gpt-4o-mini
+```
+
+To use another OpenAI-compatible local server such as vLLM:
+
+```env
+LLM_PROVIDER=openai_compatible
+OPENAI_COMPATIBLE_BASE_URL=http://localhost:8000/v1
+OPENAI_COMPATIBLE_API_KEY=local
+LLM_MODEL=your-model-name
+```
 
 ---
 

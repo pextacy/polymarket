@@ -13,7 +13,9 @@ class TradingMode(str, Enum):
 
 
 class LLMProvider(str, Enum):
+    OLLAMA = "ollama"
     OPENROUTER = "openrouter"
+    OPENAI_COMPATIBLE = "openai_compatible"
 
 
 class SearchProvider(str, Enum):
@@ -29,10 +31,19 @@ class Settings(BaseSettings):
     )
 
     # LLM
-    llm_provider: LLMProvider = LLMProvider.OPENROUTER
-    openrouter_api_key: str = Field(..., description="OpenRouter API key")
+    llm_provider: LLMProvider = LLMProvider.OLLAMA
+    ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_api_key: Optional[str] = Field(
+        default=None,
+        description="Optional API key for Ollama-compatible gateways; ignored by local Ollama",
+    )
+    openrouter_api_key: Optional[str] = Field(
+        default=None, description="OpenRouter API key"
+    )
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "openai/gpt-4o"
+    openai_compatible_base_url: str = "http://localhost:8000/v1"
+    openai_compatible_api_key: Optional[str] = None
+    llm_model: str = "llama3.2:3b"
     llm_model_ranking: Optional[str] = None
     llm_model_forecasting: Optional[str] = None
     llm_model_extraction: Optional[str] = None
@@ -48,6 +59,34 @@ class Settings(BaseSettings):
     @property
     def extraction_model(self) -> str:
         return self.llm_model_extraction or self.llm_model
+
+    def llm_client_config(self) -> dict[str, object]:
+        if self.llm_provider == LLMProvider.OLLAMA:
+            return {
+                "api_key": self.ollama_api_key or "ollama",
+                "base_url": self.ollama_base_url,
+                "default_headers": None,
+            }
+
+        if self.llm_provider == LLMProvider.OPENROUTER:
+            if not self.openrouter_api_key:
+                raise ValueError(
+                    "OPENROUTER_API_KEY is required for llm_provider=openrouter"
+                )
+            return {
+                "api_key": self.openrouter_api_key,
+                "base_url": self.openrouter_base_url,
+                "default_headers": {
+                    "HTTP-Referer": "https://github.com/polymarket-trader",
+                    "X-Title": "Polymarket Autonomous Trader",
+                },
+            }
+
+        return {
+            "api_key": self.openai_compatible_api_key or "local",
+            "base_url": self.openai_compatible_base_url,
+            "default_headers": None,
+        }
 
     # Search
     search_provider: SearchProvider = SearchProvider.SEARXNG

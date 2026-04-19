@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from ..models.forecast import Forecast, OutcomeProbability
 from ..models.market import MarketSnapshot
 from ..models.research import EvidenceItem
-from ..providers.openrouter import OpenRouterProvider
+from ..providers.base import BaseLLMProvider
 
 
 class _OutcomeOut(BaseModel):
@@ -46,7 +46,7 @@ Rules:
 class Forecaster:
     def __init__(
         self,
-        provider: OpenRouterProvider,
+        provider: BaseLLMProvider,
         model: Optional[str] = None,
     ) -> None:
         self._provider = provider

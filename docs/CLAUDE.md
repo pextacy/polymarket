@@ -17,7 +17,7 @@ This is an autonomous research and trading agent for Polymarket prediction marke
 ```
 Market Discovery → Research Pipeline → Intelligence Layer → Strategy Engine → Broker Layer
        ↓                  ↓                   ↓                  ↓               ↓
-  Gamma API          SearXNG           OpenRouter LLM       Risk Engine     PaperBroker
+  Gamma API          SearXNG        Ollama/OpenAI-Compat    Risk Engine     PaperBroker
   CLOB Data         Lightpanda         Structured JSON      ExecutionPlan   PolymarketBroker
   Data API           Evidence           Forecast/Score      Sizing/Edge
 ```
@@ -33,7 +33,7 @@ Market Discovery → Research Pipeline → Intelligence Layer → Strategy Engin
 
 | Component | Technology |
 |-----------|-----------|
-| LLM Access | OpenRouter (OpenAI-compatible API) |
+| LLM Access | Ollama by default, OpenRouter or other OpenAI-compatible backends optional |
 | Web Search | SearXNG (self-hosted) |
 | Headless Browser | Lightpanda (CDP-compatible) |
 | Isolated Execution | Daytona sandboxes |
@@ -44,7 +44,9 @@ Market Discovery → Research Pipeline → Intelligence Layer → Strategy Engin
 ### Model Provider Config (env vars)
 
 ```env
-LLM_PROVIDER=openrouter
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+# Optional backends:
 OPENROUTER_API_KEY=...
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=...
@@ -58,7 +60,7 @@ SEARXNG_BASE_URL=...
 SEARXNG_TIMEOUT_SECONDS=...
 ```
 
-**Never use direct OpenAI keys as the default.** OpenRouter is the default LLM backend.
+**Never use direct OpenAI keys as the default.** Local Ollama is the default LLM backend, with OpenRouter available as an override.
 
 ---
 
@@ -191,7 +193,7 @@ python cli.py reconcile
 
 ### M1 — Paper Trader Foundation
 - Refactored orchestrator with typed domain models
-- Provider abstraction + OpenRouter integration
+- Provider abstraction + local-first OpenAI-compatible integration
 - PaperBroker + persistent run logging
 - Risk engine v1
 - Real tests covering: pricing, sizing, risk, execution guards
@@ -218,7 +220,7 @@ python cli.py reconcile
 
 ## Implementation Order
 
-1. Replace `ChatOpenAI` calls with provider abstraction + OpenRouter default
+1. Replace `ChatOpenAI` calls with provider abstraction + Ollama default
 2. Refactor trader into explicit stages with typed objects
 3. Add PaperBroker + persistent run records
 4. Add risk engine + structured reporting
@@ -246,7 +248,7 @@ python cli.py reconcile
 - Polymarket API: `https://docs.polymarket.com/api-reference/introduction`
 - Polymarket Geoblock: `https://docs.polymarket.com/api-reference/geoblock`
 - Polymarket Orders: `https://docs.polymarket.com/trading/orders/create`
-- OpenRouter: `https://openrouter.ai/docs/guides/community/openai-sdk`
+- Ollama OpenAI compatibility: `https://docs.ollama.com/api/openai-compatibility`
 - SearXNG: `https://docs.searxng.org/dev/search_api`
 - Lightpanda: `https://lightpanda.io/docs/`
 - Daytona Python SDK: `https://www.daytona.io/docs/en/python-sdk/`
@@ -255,7 +257,7 @@ python cli.py reconcile
 
 ## Open Questions (as of 2026-04-19)
 
-- Which OpenRouter models for ranking vs forecasting vs extraction?
+- Which local models should be used for ranking vs forecasting vs extraction?
 - Migrate embeddings off OpenAI now or defer until after chat-model migration?
 - SearXNG + Lightpanda on same host as control server or separate internal services?
 - One long-lived sandbox or short-lived task sandboxes for 24/7 runtime?

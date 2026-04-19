@@ -48,11 +48,10 @@ def scan(ctx: click.Context, top: int) -> None:
         from .connectors.gamma import GammaClient
         from .intelligence.ranker import Ranker
         from .discovery.scanner import MarketScanner
-        from .providers.openrouter import OpenRouterProvider
+        from .providers.openai_compatible import OpenAICompatibleProvider
 
-        provider = OpenRouterProvider(
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
+        provider = OpenAICompatibleProvider(
+            **settings.llm_client_config(),
             default_model=settings.ranking_model,
         )
         gamma = GammaClient(settings.gamma_base_url)

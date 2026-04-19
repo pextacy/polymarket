@@ -15,7 +15,7 @@ This project will evolve the current Polymarket agent prototype into a productio
 - structured research and decision pipelines
 - self-hosted web search using SearXNG
 - headless web browsing using Lightpanda
-- model access through OpenRouter instead of direct OpenAI keys
+- model access through local OpenAI-compatible backends, with Ollama as the default
 - isolated agent execution inside Daytona sandboxes
 - optional 24/7 server orchestration and monitoring
 
@@ -146,7 +146,7 @@ Secondary users:
    - News and other structured connectors where useful
 
 3. Intelligence Layer
-   - OpenRouter-backed LLM access for ranking, summarization, forecasting, and extraction
+   - local-first LLM access for ranking, summarization, forecasting, and extraction
    - structured JSON outputs only for machine-consumed decisions
 
 4. Strategy Engine
@@ -172,7 +172,7 @@ Secondary users:
 
 ## 10. Architecture Decisions
 
-### 10.1 Replace direct OpenAI usage with OpenRouter
+### 10.1 Replace direct OpenAI usage with local OpenAI-compatible providers
 
 Current state:
 
@@ -182,19 +182,20 @@ Current state:
 
 Target state:
 
-- replace direct OpenAI credential dependency with `OPENROUTER_API_KEY`
-- route chat model calls through OpenRouter using OpenAI-compatible base URL
+- default local development to `ollama`
+- keep `openrouter` and generic OpenAI-compatible endpoints as optional backends
 - introduce a model provider abstraction so model backend is configurable
 - preserve the option to use OpenAI-compatible SDK clients where practical
 
 Requirements:
 
 - add provider config fields:
-  - `LLM_PROVIDER=openrouter`
+  - `LLM_PROVIDER=ollama`
+  - `OLLAMA_BASE_URL=http://localhost:11434/v1`
+  - `OPENAI_COMPATIBLE_BASE_URL`
   - `OPENROUTER_API_KEY`
-  - `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
   - `LLM_MODEL`
-- optionally retain `OPENAI_API_KEY` only as a fallback provider, not as the default
+- optionally retain `openrouter` as a non-local provider, not as the default
 - support model overrides per task type:
   - ranking model
   - forecasting model
@@ -202,7 +203,7 @@ Requirements:
 
 Notes:
 
-- OpenRouter is OpenAI-compatible and can be used via base URL switching
+- Ollama and vLLM expose OpenAI-compatible APIs that can be used via base URL switching
 - optional attribution headers may be configured, but must not be required for core execution
 
 ### 10.2 Replace ad hoc web search with self-hosted SearXNG
@@ -512,7 +513,7 @@ Deliverables:
 - refactored orchestrator
 - typed domain models
 - provider abstraction for LLM access
-- OpenRouter integration for chat models
+- local-first OpenAI-compatible integration for chat models
 - paper broker
 - persistent run logging
 - risk engine v1
@@ -576,7 +577,7 @@ Exit criteria:
 The project is considered successful for the first production-grade release when:
 
 - the paper trading system is stable and fully observable
-- OpenRouter is the default model backend
+- Ollama is the default model backend, with OpenRouter supported as an override
 - SearXNG is the default web search backend
 - Lightpanda is available for dynamic page retrieval
 - Daytona is used for isolated worker execution
@@ -606,7 +607,7 @@ The project is considered successful for the first production-grade release when
 
 ## 19. Open Questions
 
-- which specific OpenRouter models should be used for ranking, forecasting, and extraction?
+- which specific local models should be used for ranking, forecasting, and extraction?
 - should embeddings also move away from OpenAI immediately, or can that be deferred until after the chat-model migration?
 - should SearXNG and Lightpanda live on the same host as the control server or behind separate internal services?
 - should the first 24/7 runtime use one long-lived sandbox or short-lived task sandboxes managed by the control server?
@@ -617,7 +618,7 @@ The project is considered successful for the first production-grade release when
 
 Order of execution:
 
-1. replace direct OpenAI chat calls with a provider abstraction and OpenRouter default
+1. replace direct OpenAI chat calls with a provider abstraction and Ollama default
 2. refactor the trader into explicit stages and typed objects
 3. add paper broker and persistent run records
 4. add risk engine and structured reporting
@@ -636,8 +637,8 @@ These informed the architecture as of 2026-04-19:
 - Polymarket orderbook and WebSocket docs: `https://docs.polymarket.com/trading/orderbook`
 - Polymarket geographic restrictions: `https://docs.polymarket.com/api-reference/geoblock`
 - Polymarket rate limits: `https://docs.polymarket.com/api-reference/rate-limits`
+- Ollama OpenAI compatibility: `https://docs.ollama.com/api/openai-compatibility`
 - OpenRouter OpenAI SDK compatibility: `https://openrouter.ai/docs/guides/community/openai-sdk`
-- OpenRouter API keys: `https://openrouter.ai/docs/api-keys`
 - SearXNG search API: `https://docs.searxng.org/dev/search_api`
 - Lightpanda docs: `https://lightpanda.io/docs/`
 - Daytona sandboxes: `https://www.daytona.io/docs/en/sandboxes/`

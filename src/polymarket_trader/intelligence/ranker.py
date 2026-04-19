@@ -6,7 +6,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from ..models.market import MarketSnapshot
-from ..providers.openrouter import OpenRouterProvider
+from ..providers.base import BaseLLMProvider
 
 
 class _RankOut(BaseModel):
@@ -31,7 +31,7 @@ Return ONLY valid JSON with a "ranked" array of condition_ids in descending prio
 class Ranker:
     def __init__(
         self,
-        provider: OpenRouterProvider,
+        provider: BaseLLMProvider,
         model: Optional[str] = None,
     ) -> None:
         self._provider = provider

@@ -21,7 +21,7 @@ from .models.forecast import OpportunityScore
 from .models.market import MarketSnapshot
 from .models.run import RunRecord, RunStatus
 from .persistence.store import TradeStore
-from .providers.openrouter import OpenRouterProvider
+from .providers.openai_compatible import OpenAICompatibleProvider
 from .research.pipeline import ResearchPipeline
 from .risk.engine import RiskEngine
 from .strategy.planner import ExecutionPlanner
@@ -32,9 +32,8 @@ class Orchestrator:
     def __init__(self, settings: Settings) -> None:
         self._s = settings
 
-        self._provider = OpenRouterProvider(
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
+        self._provider = OpenAICompatibleProvider(
+            **settings.llm_client_config(),
             default_model=settings.llm_model,
         )
 

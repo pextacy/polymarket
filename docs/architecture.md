@@ -32,7 +32,7 @@ Scanner    Pipeline  Forecaster   Scorer     PaperBroker
 ┌───────────────────────────▼─────────────────────────────────────┐
 │                  External Services                              │
 │  Polymarket Gamma API │ CLOB API │ SearXNG │ Lightpanda         │
-│  OpenRouter LLM API                                            │
+│  Ollama / OpenAI-compatible LLM endpoint                       │
 └─────────────────────────────────────────────────────────────────┘
                             │
 ┌───────────────────────────▼─────────────────────────────────────┐
@@ -66,7 +66,7 @@ Concurrency: CLOB enrichment runs with `asyncio.Semaphore(5)` to avoid rate limi
 **Input:** `MarketSnapshot`
 **Output:** `list[EvidenceItem]`
 
-1. Calls `OpenRouterProvider.complete_json()` to generate 3 targeted search queries
+1. Calls the configured LLM provider to generate 3 targeted search queries
 2. Runs all queries in parallel against `SearXNGClient`
 3. Deduplicates results by URL and snippet hash (MD5)
 4. Optionally enriches top results with `LightpandaClient.fetch_text()` for full page text
@@ -223,7 +223,7 @@ Orchestrator.run_once()
   │
   ├─ For each market (concurrency=3):
   │    ├─ ResearchPipeline.research()
-  │    │    ├─ OpenRouter: generate 3 queries
+  │    │    ├─ LLM provider: generate 3 queries
   │    │    ├─ SearXNG: parallel search ×3
   │    │    ├─ Lightpanda: enrich top results (optional)
   │    │    └─ Deduplicate + freshness filter
@@ -231,7 +231,7 @@ Orchestrator.run_once()
   │    ├─ TradeStore.save_evidence()
   │    │
   │    ├─ Forecaster.forecast()
-  │    │    └─ OpenRouter: complete_json(_ForecastOut)
+  │    │    └─ LLM provider: complete_json(_ForecastOut)
   │    │
   │    ├─ TradeStore.save_forecast()
   │    │
@@ -263,7 +263,7 @@ All async, no threads. Single event loop per process.
 
 ## Provider Abstraction
 
-All LLM calls go through `OpenRouterProvider`. The OpenAI SDK is used with `base_url` pointed at OpenRouter. This means:
+All LLM calls go through `OpenAICompatibleProvider`. The OpenAI SDK is used against a configurable OpenAI-compatible base URL. This means:
 
 - Any OpenAI-compatible model can be selected via `LLM_MODEL`
 - Per-task model overrides: `LLM_MODEL_RANKING`, `LLM_MODEL_FORECASTING`, `LLM_MODEL_EXTRACTION`

@@ -8,17 +8,22 @@ All settings are loaded from the `.env` file (or environment variables) via `con
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `openrouter` | LLM backend. Only `openrouter` is supported. |
-| `OPENROUTER_API_KEY` | **required** | Your OpenRouter API key. |
+| `LLM_PROVIDER` | `ollama` | LLM backend. Supported: `ollama`, `openrouter`, `openai_compatible`. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Local Ollama OpenAI-compatible base URL. |
+| `OLLAMA_API_KEY` | _(optional)_ | Ignored by local Ollama, but accepted for gateway setups. |
+| `OPENROUTER_API_KEY` | _(optional)_ | Required only when `LLM_PROVIDER=openrouter`. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL. |
-| `LLM_MODEL` | `openai/gpt-4o` | Default model for all tasks. |
+| `OPENAI_COMPATIBLE_BASE_URL` | `http://localhost:8000/v1` | Base URL for another OpenAI-compatible server such as vLLM. |
+| `OPENAI_COMPATIBLE_API_KEY` | _(optional)_ | API key sent to the OpenAI-compatible server. |
+| `LLM_MODEL` | `llama3.2:3b` | Default model for all tasks. |
 | `LLM_MODEL_RANKING` | _(uses LLM_MODEL)_ | Model used to rank markets by researchability. |
 | `LLM_MODEL_FORECASTING` | _(uses LLM_MODEL)_ | Model used to estimate fair probabilities. |
 | `LLM_MODEL_EXTRACTION` | _(uses LLM_MODEL)_ | Model used to generate search queries. |
 
 **Model selection guidance:**
-- Ranking and extraction: use a fast, cheap model (e.g., `openai/gpt-4o-mini`)
-- Forecasting: use the most capable model available (e.g., `openai/gpt-4o`)
+- For local development, start with a small Ollama model such as `llama3.2:3b`
+- Ranking and extraction can use a smaller model than forecasting
+- If you need more capability than Ollama on your machine can provide, switch to `openai_compatible` or `openrouter`
 
 ---
 
